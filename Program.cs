@@ -72,16 +72,31 @@ class Program
                 : Enum.GetNames(typeof(DayOfWeek)).ToList(); // All 7 days if null or empty
 
             var today = now.DayOfWeek.ToString();
-
+            
+            // skip if today is not in DaysOfWeek of Schedule
             if (!days.Contains(today, StringComparer.OrdinalIgnoreCase))
                 continue;
 
-            if (!string.IsNullOrEmpty(schedule.AtTime) &&
-                !TimeMatches(now, schedule.AtTime))
+            // Parse schedule.AtTime into a DateTime for today
+            DateTime? scheduledTime = null;
+            if (!string.IsNullOrEmpty(schedule.AtTime))
+            {
+                if (TimeSpan.TryParse(schedule.AtTime, out var timeOfDay))
+                {
+                    scheduledTime = now.Date + timeOfDay; // today at AtTime
+                }
+            }
+            // skip if AtTime is null/empty 
+            if (!(scheduledTime.HasValue))
                 continue;
 
-            // Avoid running multiple times per day
-            if (schedule.LastRunTime != null && schedule.LastRunTime.Value.Date == now.Date)
+            // Skip if AtTime is set but now < AtTime (too early)
+            if (scheduledTime.HasValue && now < scheduledTime.Value)
+                continue;
+
+            // Skip if already run at or after AtTime today
+            if (schedule.LastRunTime != null &&
+                schedule.LastRunTime.Value >= scheduledTime.Value)
                 continue;
 
             Console.WriteLine($"Running tests for {schedule.ClientName} | Categories: {schedule.TestsToBeRun}");
@@ -94,16 +109,6 @@ class Program
                 new { Now = now, schedule.Id });
         }
     }
-
-    private static bool TimeMatches(DateTime now, string hhmm)
-    {
-        if (TimeSpan.TryParse(hhmm, out var target))
-        {
-            return now.Hour == target.Hours && now.Minute == target.Minutes;
-        }
-        return false;
-    }
-
     private static Task RunTests(string clientName, string testsToRun)
     {
         // Build configuration
